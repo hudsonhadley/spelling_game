@@ -1,0 +1,23 @@
+[build-system]
+requires = ["hatchling >= 1.26"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/spelling_game"]
+
+[project]
+name = "spelling-game"
+version = "0.0.1"
+dependencies = [
+    "dotenv>=0.9.9",
+    "Flask>=3.1.0",
+    "Flask-WTF>=1.2.2"
+]
+requires-python = ">=3.12"
+authors = [
+    {name = "Hudson Hadley", email = "hudsonhadley@yahoo.com"},
+    {name = "Gordon Schartner", email = "gordonschartner13@gmail.com"},
+    {name = "Nathaniel Davis", email = "nathanieldavis006@gmail.com"},
+]
+description = "A spelling game in the web browser"
+readme = "README.md"
