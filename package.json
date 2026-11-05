@@ -1,0 +1,12 @@
+{
+  "name": "spelling-game-client",
+  "private": true,
+  "description": "TypeScript build for the spelling game front end",
+  "scripts": {
+    "build": "tsc",
+    "watch": "tsc --watch"
+  },
+  "devDependencies": {
+    "typescript": "^7.0.2"
+  }
+}

@@ -3,6 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="csrf-token" content="{{ csrf_token() }}">
   <title>Spelling Practice | Spelling Game</title>
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-sRIl4kxILFvY47J16cr9ZwB07vP4J8+LH7qKQnuqkuIAvNWLzeN8tE5YBujZqJLB" crossorigin="anonymous">
 </head>
@@ -13,8 +14,9 @@
   <main class="container py-5">
     <div class="row justify-content-center">
       <div class="col-md-9 col-lg-7">
+        <div id="game-error" class="alert alert-danger" role="alert" hidden></div>
         <div class="d-flex justify-content-between align-items-center mb-3">
-          <span class="badge text-bg-success" id="round">Word 1 of 8</span>
+          <span class="badge text-bg-success" id="round">Loading...</span>
           <span class="text-body-secondary">Correct: <strong id="score">0</strong></span>
         </div>
         <section class="card border-0 shadow-sm rounded-4" aria-labelledby="game-title">
@@ -22,11 +24,17 @@
             <p class="text-success text-uppercase small fw-bold">Listen. Spell. Learn.</p>
             <h1 class="h2 fw-bold" id="game-title">What word do you hear?</h1>
             <p class="text-body-secondary">Play the word, then type its spelling below. You can listen as many times as you like.</p>
-            <button class="btn btn-success btn-lg w-100 my-3" id="play-word" type="button">Play word</button>
-            <p class="small text-body-secondary" id="audio-status" role="status">Press Play word to listen.</p>
+            <button class="btn btn-success btn-lg w-100 my-3" id="play-word" type="button" disabled>Play word</button>
+            <audio id="word-audio" preload="auto"></audio>
+            <p class="small text-body-secondary" id="audio-status" role="status">Loading your first word...</p>
+            <div class="border-start border-success border-4 bg-body-tertiary rounded-end p-3 mb-3" id="definition-box" hidden>
+              <p class="small text-uppercase fw-bold text-success mb-1">Definition <span class="fst-italic fw-normal text-body-secondary text-lowercase" id="part-of-speech"></span></p>
+              <ol class="mb-1 ps-3" id="definitions"></ol>
+              <p class="small text-body-secondary mb-0"><span id="letter-count"></span> letters &middot; definitions from Merriam-Webster</p>
+            </div>
             <form id="spelling-form">
               <label class="form-label fw-semibold" for="answer">Your spelling</label>
-              <input class="form-control form-control-lg" id="answer" name="answer" type="text" placeholder="Type the word you hear" autocomplete="off" autocapitalize="none" spellcheck="false" aria-describedby="feedback" required>
+              <input class="form-control form-control-lg" id="answer" name="answer" type="text" placeholder="Type the word you hear" autocomplete="off" autocapitalize="none" autocorrect="off" spellcheck="false" maxlength="100" aria-describedby="feedback" required>
               <button class="btn btn-dark w-100 mt-3" id="check-answer" type="submit">Check spelling</button>
             </form>
             <div class="mt-3" id="feedback" role="status" aria-live="polite" aria-atomic="true"></div>
@@ -42,121 +50,6 @@
     </div>
   </main>
   <script src="../static/js/spelling.js"></script>
-  <script>
-    const requested = new URLSearchParams(window.location.search).get('difficulty');
-    const difficulty = ['easy', 'medium', 'hard'].includes(requested) ? requested : 'easy';
-    const practiceWords = Spelling.words().filter(item => item.difficulty === difficulty);
-    for (let i = practiceWords.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1));
-      [practiceWords[i], practiceWords[j]] = [practiceWords[j], practiceWords[i]];
-    }
-    const roundWords = practiceWords.slice(0, 8);
-    const words = roundWords.map(item => item.word);
-    document.getElementById('round').textContent = `${difficulty} - Word 1 of ${words.length}`;
-    const answer = document.getElementById('answer');
-    const feedback = document.getElementById('feedback');
-    const playButton = document.getElementById('play-word');
-    const checkButton = document.getElementById('check-answer');
-    const revealButton = document.getElementById('reveal-word');
-    const nextButton = document.getElementById('next-word');
-    const audioStatus = document.getElementById('audio-status');
-
-    let wordIndex = 0;
-    let score = 0;
-    let resolved = false;
-    let complete = false;
-
-
-    playButton.addEventListener('click', async () => {
-      audioStatus.textContent = 'Playing word...';
-      answer.focus();
-      try {
-        await Spelling.play(roundWords[wordIndex]);
-        audioStatus.textContent = 'Listen again whenever you need.';
-      } catch (error) { audioStatus.textContent = error.message; }
-    });
-    function showFeedback(message, style) {
-      feedback.className = `alert alert-${style} mt-3 mb-0`;
-      feedback.textContent = message;
-    }
-
-    function finishWord() {
-      resolved = true;
-      answer.disabled = true;
-      checkButton.disabled = true;
-      revealButton.disabled = true;
-      nextButton.disabled = false;
-      if (wordIndex === words.length - 1) nextButton.textContent = 'See results';
-    }
-
-    document.getElementById('spelling-form').addEventListener('submit', (event) => {
-      event.preventDefault();
-      if (resolved) return;
-      if (!answer.value.trim()) {
-        showFeedback('Type your spelling first.', 'warning');
-        answer.focus();
-        return;
-      }
-      if (answer.value.trim().toLowerCase() === words[wordIndex]) {
-        score += 1;
-        document.getElementById('score').textContent = score;
-        showFeedback('Correct! Great spelling.', 'success');
-        finishWord();
-        nextButton.focus();
-      } else {
-        showFeedback('Almost! Listen again and give it another try.', 'warning');
-        answer.focus();
-        answer.select();
-      }
-    });
-
-    revealButton.addEventListener('click', () => {
-      if (resolved) return;
-      showFeedback(`The spelling is "${words[wordIndex]}". Try to remember it for next time!`, 'info');
-      finishWord();
-      nextButton.focus();
-    });
-
-    nextButton.addEventListener('click', () => {
-      if (complete) {
-        window.location.reload();
-        return;
-      }
-      if (!resolved) return;
-      Spelling.stop();
-      if (wordIndex === words.length - 1) {
-        document.getElementById('game-title').textContent = 'Practice complete!';
-        showFeedback(`You spelled ${score} of ${words.length} words correctly. Play again to keep practicing.`, 'success');
-        nextButton.textContent = 'Play again';
-        complete = true;
-        playButton.disabled = true;
-        try {
-          const stats = Spelling.stats();
-          stats.rounds += 1;
-          stats.correct += score;
-          stats.total += words.length;
-          Spelling.save('spelling.stats', stats);
-          audioStatus.textContent = 'Round saved! See your stats on the home page.';
-        } catch { audioStatus.textContent = 'Practice finished, but browser storage was unavailable. Stats could not be saved.'; }
-        return;
-      }
-      wordIndex += 1;
-      resolved = false;
-      document.getElementById('round').textContent = `${difficulty} - Word ${wordIndex + 1} of ${words.length}`;
-      answer.value = '';
-      answer.disabled = false;
-      checkButton.disabled = false;
-      revealButton.disabled = false;
-      nextButton.disabled = true;
-      feedback.textContent = '';
-      feedback.className = 'mt-3';
-      audioStatus.textContent = 'Press Play word to listen.';
-      playButton.focus();
-    });
-
-    window.addEventListener('pagehide', () => {
-      Spelling.stop();
-    });
-  </script>
+  <script type="module" src="{{ url_for('static', filename='dist/game.js') }}"></script>
 </body>
 </html>

@@ -19,7 +19,12 @@ def get_config() -> type:
 
     secret_key: str = os.environ.get("SECRET_KEY") or env.get("SECRET_KEY") or DEV_SECRET_KEY
 
+    # Merriam-Webster Collegiate Dictionary API key (https://dictionaryapi.com).
+    # Set MW_API_KEY in .appenv. Stays server-side; never sent to the browser.
+    mw_api_key: str | None = os.environ.get("MW_API_KEY") or env.get("MW_API_KEY") or None
+
     class Config:
         SECRET_KEY: str = secret_key
+        MW_API_KEY: str | None = mw_api_key
 
     return Config
