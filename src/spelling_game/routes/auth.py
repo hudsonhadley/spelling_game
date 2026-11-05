@@ -6,9 +6,17 @@ Two user roles exist:
 """
 
 from functools import wraps
+from contextlib import contextmanager
+from pathlib import Path
+import sqlite3
+from urllib.parse import urlsplit
+
+from werkzeug.security import check_password_hash, generate_password_hash
+from spelling_game.forms import LoginForm, SignupForm
 
 from flask import (
     abort,
+    current_app,
     flash,
     redirect,
     render_template,
@@ -28,13 +36,15 @@ ADMIN = "admin"
 # --------------------------------------------------------------------------
 def get_current_user() -> dict | None:
     """Return {"id", "username", "role"} for the logged-in user, else None."""
-    if "user_id" not in session:
+    user_id = session.get("user_id")
+    if user_id is None:
         return None
-    return {
-        "id": session["user_id"],
-        "username": session["username"],
-        "role": session["role"],
-    }
+    with _accounts() as db:
+        row = db.execute("SELECT id, username, role FROM users WHERE id = ?", (user_id,)).fetchone()
+    if row is None:
+        session.clear()
+        return None
+    return dict(row)
 
 
 @auth_bp.app_context_processor
@@ -45,12 +55,15 @@ def inject_current_user():
 
 def _is_safe_next(target: str | None) -> bool:
     """Only allow redirects to paths on this site (prevents open redirects)."""
-    return bool(
-        target
-        and target.startswith("/")
-        and not target.startswith("//")
-        and "\\" not in target
-    )
+    if not target or not target.startswith("/"):
+        return False
+    if target.startswith("//") or "\\" in target or any(ord(char) < 32 or ord(char) == 127 for char in target):
+        return False
+    try:
+        parsed = urlsplit(target)
+    except ValueError:
+        return False
+    return not parsed.scheme and not parsed.netloc
 
 
 # --------------------------------------------------------------------------
@@ -83,56 +96,101 @@ def admin_required(view):
 
 
 # --------------------------------------------------------------------------
-# TODO: replace with real database lookups once the models exist
+# SQLite account storage (kept separate from future game data).
 # --------------------------------------------------------------------------
-def authenticate_user(username: str, password: str) -> dict | None:
-    """Check credentials. Return {"id", "username", "role"} or None.
+@contextmanager
+def _accounts():
+    """Open the configured account database; create the table on first use."""
+    database = Path(current_app.config.get("AUTH_DATABASE", Path(current_app.instance_path) / "accounts.sqlite3"))
+    database.parent.mkdir(parents=True, exist_ok=True)
+    db = sqlite3.connect(database)
+    db.row_factory = sqlite3.Row
+    try:
+        db.execute("""
+            CREATE TABLE IF NOT EXISTS users (
+                id INTEGER PRIMARY KEY,
+                username TEXT NOT NULL,
+                email TEXT NOT NULL UNIQUE COLLATE NOCASE,
+                password_hash TEXT NOT NULL,
+                role TEXT NOT NULL DEFAULT 'player' CHECK (role IN ('player', 'admin'))
+            )
+        """)
+        with db:
+            yield db
+    finally:
+        db.close()
 
-    TODO: look the user up in the database and verify the password against its
-    stored hash (e.g. werkzeug.security.check_password_hash). Until then no one
-    can log in.
-    """
-    return None
+
+def authenticate_user(email: str, password: str) -> dict | None:
+    """Return public account details when the password hash matches."""
+    with _accounts() as db:
+        user = db.execute("SELECT * FROM users WHERE email = ?", (email.strip().lower(),)).fetchone()
+    if user is None or not check_password_hash(user["password_hash"], password):
+        return None
+    return {key: user[key] for key in ("id", "username", "role")}
 
 
-# --------------------------------------------------------------------------
-# Routes
-# --------------------------------------------------------------------------
+def _start_session(user, remember=False):
+    session.clear()
+    session["user_id"] = user["id"]
+    session["username"] = user["username"]
+    session["role"] = user["role"]
+    session.permanent = remember
+
+
+def _destination(next_url):
+    return next_url if _is_safe_next(next_url) else url_for("core.main")
+
+
+def _render_account(login_form, signup_form, active_tab, next_url, status=200):
+    return render_template("login.html", login_form=login_form, signup_form=signup_form,
+                           active_tab=active_tab, next_url=next_url), status
+
+
 @auth_bp.route("/login", methods=["GET", "POST"])
 def login():
-    if get_current_user() is not None:
-        return redirect(url_for("core.game"))
-
     next_url = request.values.get("next")
-
-    if request.method == "POST":
-        username = request.form.get("username", "").strip()
-        password = request.form.get("password", "")
-
-        if not username or not password:
-            flash("Enter both a username and a password.", "danger")
-            return render_template("login.html", next_url=next_url), 400
-
-        user = authenticate_user(username, password)
+    if get_current_user() is not None:
+        return redirect(_destination(next_url))
+    form = LoginForm(prefix="login")
+    if form.validate_on_submit():
+        user = authenticate_user(form.email.data, form.password.data)
         if user is None:
-            flash("Invalid username or password.", "danger")
-            return render_template("login.html", next_url=next_url), 401
+            flash("Invalid email address or password.", "danger")
+            return _render_account(form, SignupForm(prefix="signup", formdata=None), "login", next_url, 401)
+        _start_session(user, form.remember.data)
+        return redirect(_destination(next_url))
+    return _render_account(form, SignupForm(prefix="signup", formdata=None), "login", next_url,
+                           400 if request.method == "POST" else 200)
 
-        session.clear()  # drop any stale data from before login
-        session["user_id"] = user["id"]
-        session["username"] = user["username"]
-        session["role"] = user["role"]
 
-        if _is_safe_next(next_url):
-            return redirect(next_url)
-        return redirect(url_for("core.game"))
-
-    return render_template("login.html", next_url=next_url)
+@auth_bp.route("/signup", methods=["GET", "POST"])
+def signup():
+    next_url = request.values.get("next")
+    if get_current_user() is not None:
+        return redirect(_destination(next_url))
+    form = SignupForm(prefix="signup")
+    if form.validate_on_submit():
+        try:
+            with _accounts() as db:
+                cursor = db.execute(
+                    "INSERT INTO users (username, email, password_hash, role) VALUES (?, ?, ?, ?)",
+                    (form.name.data, form.email.data, generate_password_hash(form.password.data), PLAYER),
+                )
+                user = {"id": cursor.lastrowid, "username": form.name.data, "role": PLAYER}
+        except sqlite3.IntegrityError:
+            form.email.errors.append("An account with this email address already exists.")
+            return _render_account(LoginForm(prefix="login", formdata=None), form, "signup", next_url, 409)
+        _start_session(user)
+        flash("Your account has been created. Welcome!", "success")
+        return redirect(_destination(next_url))
+    return _render_account(LoginForm(prefix="login", formdata=None), form, "signup", next_url,
+                           400 if request.method == "POST" else 200)
 
 
 @auth_bp.post("/logout")
 def logout():
-    """POST-only so a stray link or image can't log the user out."""
+    """CSRF-protected POST clears the authenticated session."""
     session.clear()
     flash("You have been logged out.", "info")
     return redirect(url_for("auth.login"))

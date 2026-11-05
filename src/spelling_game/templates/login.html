@@ -22,58 +22,51 @@
       </section>
 
       <section class="col-md-7 p-4 p-lg-5" aria-label="Your account">
-        <ul class="nav nav-pills nav-fill mb-4" id="account-tabs" role="tablist">
-          <li class="nav-item" role="presentation">
-            <button class="nav-link active" id="login-tab" data-bs-toggle="pill" data-bs-target="#login-panel" type="button" role="tab" aria-controls="login-panel" aria-selected="true">Log in</button>
-          </li>
-          <li class="nav-item" role="presentation">
-            <button class="nav-link" id="signup-tab" data-bs-toggle="pill" data-bs-target="#signup-panel" type="button" role="tab" aria-controls="signup-panel" aria-selected="false">Sign up</button>
-          </li>
-        </ul>
-
-        <!-- Connect these forms to authentication routes when the backend is ready. -->
-        <div class="tab-content">
-          <div class="tab-pane fade show active" id="login-panel" role="tabpanel" aria-labelledby="login-tab" tabindex="0">
-            <form aria-labelledby="login-title">
-              <h2 id="login-title" class="h3 fw-bold">Welcome back!</h2>
-              <p class="text-body-secondary mb-4">Ready for another round of words?</p>
-              <div class="mb-3">
-                <label for="login-email" class="form-label">Email address</label>
-                <input id="login-email" class="form-control" name="email" type="email" autocomplete="username" placeholder="you@example.com" required>
-              </div>
-              <div class="mb-3">
-                <label for="login-password" class="form-label">Password</label>
-                <input id="login-password" class="form-control" name="password" type="password" autocomplete="current-password" placeholder="Enter your password" required>
-              </div>
-              <div class="form-check mb-4">
-                <input class="form-check-input" id="remember" type="checkbox" name="remember">
-                <label class="form-check-label" for="remember">Remember me</label>
-              </div>
-              <button class="btn btn-success btn-lg w-100" type="button" aria-describedby="preview-note">Log in</button>
-            </form>
+        {% for category, message in get_flashed_messages(with_categories=true) %}
+          <div class="alert alert-{{ category }}" role="alert">{{ message }}</div>
+        {% endfor %}
+        <nav class="nav nav-pills nav-fill mb-4" aria-label="Account options">
+          <a class="nav-link {{ 'active' if active_tab == 'login' }}" href="{{ url_for('auth.login', next=next_url) }}" {% if active_tab == 'login' %}aria-current="page"{% endif %}>Log in</a>
+          <a class="nav-link {{ 'active' if active_tab == 'signup' }}" href="{{ url_for('auth.signup', next=next_url) }}" {% if active_tab == 'signup' %}aria-current="page"{% endif %}>Sign up</a>
+        </nav>
+        {% macro input_field(field, autocomplete) %}
+          <div class="mb-3">
+            {{ field.label(class_='form-label') }}
+            {{ field(class_='form-control' + (' is-invalid' if field.errors else ''), autocomplete=autocomplete, aria_describedby=field.id + '-errors') }}
+            <div id="{{ field.id }}-errors" class="invalid-feedback">
+              {% for error in field.errors %}<div>{{ error }}</div>{% endfor %}
+            </div>
           </div>
-
-          <div class="tab-pane fade" id="signup-panel" role="tabpanel" aria-labelledby="signup-tab" tabindex="0">
-            <form aria-labelledby="signup-title">
-              <h2 id="signup-title" class="h3 fw-bold">Start your word journey.</h2>
-              <p class="text-body-secondary mb-4">Create an account and get ready to practice.</p>
-              <div class="mb-3">
-                <label for="signup-name" class="form-label">Name</label>
-                <input id="signup-name" class="form-control" name="name" type="text" autocomplete="name" placeholder="Your name" required>
-              </div>
-              <div class="mb-3">
-                <label for="signup-email" class="form-label">Email address</label>
-                <input id="signup-email" class="form-control" name="email" type="email" autocomplete="username" placeholder="you@example.com" required>
-              </div>
-              <div class="mb-4">
-                <label for="signup-password" class="form-label">Password</label>
-                <input id="signup-password" class="form-control" name="password" type="password" autocomplete="new-password" placeholder="Create a password" required>
-              </div>
-              <button class="btn btn-success btn-lg w-100" type="button" aria-describedby="preview-note">Create account</button>
-            </form>
-          </div>
-        </div>
-        <p class="small text-body-secondary mt-4 mb-0" id="preview-note">Preview only. Account login and signup are not connected yet.</p>
+        {% endmacro %}
+        {% if active_tab == 'login' %}
+          <form method="post" action="{{ url_for('auth.login') }}" aria-labelledby="login-title">
+            {{ login_form.hidden_tag() }}
+            <input type="hidden" name="next" value="{{ next_url or '' }}">
+            <h2 id="login-title" class="h3 fw-bold">Welcome back!</h2>
+            <p class="text-body-secondary mb-4">Ready for another round of words?</p>
+            {{ input_field(login_form.email, 'username') }}
+            {{ input_field(login_form.password, 'current-password') }}
+            <div class="form-check mb-4">
+              {{ login_form.remember(class_='form-check-input') }}
+              {{ login_form.remember.label(class_='form-check-label') }}
+            </div>
+            {{ login_form.submit(class_='btn btn-success btn-lg w-100') }}
+          </form>
+        {% else %}
+          <form method="post" action="{{ url_for('auth.signup') }}" aria-labelledby="signup-title">
+            {{ signup_form.hidden_tag() }}
+            <input type="hidden" name="next" value="{{ next_url or '' }}">
+            <h2 id="signup-title" class="h3 fw-bold">Start your word journey.</h2>
+            <p class="text-body-secondary mb-4">Create an account and get ready to practice.</p>
+            {{ input_field(signup_form.name, 'name') }}
+            {{ input_field(signup_form.email, 'username') }}
+            {{ input_field(signup_form.password, 'new-password') }}
+            <p class="form-text">Use between 8 and 128 characters for your password.</p>
+            {{ input_field(signup_form.confirm_password, 'new-password') }}
+            {{ signup_form.submit(class_='btn btn-success btn-lg w-100') }}
+          </form>
+        {% endif %}
+        <a class="d-block text-center text-success mt-4" href="{{ url_for('core.main') }}">Back to home</a>
       </section>
     </div>
   </main>

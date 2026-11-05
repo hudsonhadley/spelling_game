@@ -1,14 +1,13 @@
 """Application configuration."""
 
 from pathlib import Path
+import os
+from secrets import token_hex
 
 from dotenv import dotenv_values
 
-# TODO: Before deploying, remove this placeholder. Put a long random SECRET_KEY
-# in .appenv (generate one with: python -c "import secrets; print(secrets.token_hex(32))")
-# and have get_config() raise ValueError when it is missing instead of falling
-# back to this publicly visible key.
-DEV_SECRET_KEY = "dev-only-placeholder-key-change-me"
+# Development sessions expire when this process restarts unless SECRET_KEY is set.
+DEV_SECRET_KEY = token_hex(32)
 
 
 def get_config() -> type:
@@ -18,7 +17,7 @@ def get_config() -> type:
     appenv_path: Path = project_dir / ".appenv"
     env: dict[str, str | None] = dotenv_values(appenv_path)
 
-    secret_key: str = env.get("SECRET_KEY") or DEV_SECRET_KEY
+    secret_key: str = os.environ.get("SECRET_KEY") or env.get("SECRET_KEY") or DEV_SECRET_KEY
 
     class Config:
         SECRET_KEY: str = secret_key
