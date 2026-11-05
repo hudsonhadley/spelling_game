@@ -61,7 +61,7 @@
             {{ input_field(signup_form.name, 'name') }}
             {{ input_field(signup_form.email, 'username') }}
             {{ input_field(signup_form.password, 'new-password') }}
-            <p class="form-text">Use between 8 and 128 characters for your password.</p>
+            <p class="form-text">Use between 8 and 128 characters, including at least one letter and one number.</p>
             {{ input_field(signup_form.confirm_password, 'new-password') }}
             {{ signup_form.submit(class_='btn btn-success btn-lg w-100') }}
           </form>

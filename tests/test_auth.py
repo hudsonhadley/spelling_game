@@ -30,7 +30,7 @@ class AuthTests(unittest.TestCase):
 
     def signup(self, **changes):
         data = {"signup-name": "Test Player", "signup-email": " PLAYER@Example.com ",
-                "signup-password": "correct horse battery", "signup-confirm_password": "correct horse battery",
+                "signup-password": "correct horse battery7", "signup-confirm_password": "correct horse battery7",
                 "signup-csrf_token": self.token("/signup", "signup")}
         data.update(changes)
         return self.client.post("/signup", data=data)
@@ -47,14 +47,14 @@ class AuthTests(unittest.TestCase):
             email, password_hash, role = db.execute('SELECT email, password_hash, role FROM users').fetchone()
         self.assertEqual(email, 'player@example.com')
         self.assertEqual(role, 'player')
-        self.assertNotEqual(password_hash, 'correct horse battery')
+        self.assertNotEqual(password_hash, 'correct horse battery7')
         self.assertEqual(self.client.get('/game').status_code, 200)
         self.assertEqual(self.client.get('/words').status_code, 403)
         self.assertEqual(self.logout().status_code, 302)
         token = self.token('/login', 'login')
         self.assertEqual(self.client.post('/login', data={'login-csrf_token': token, 'login-email': email, 'login-password': 'wrong'}).status_code, 401)
         token = self.token('/login', 'login')
-        response = self.client.post('/login', data={'login-csrf_token': token, 'login-email': email.upper(), 'login-password': 'correct horse battery', 'login-remember': 'y', 'next': '//evil.example'})
+        response = self.client.post('/login', data={'login-csrf_token': token, 'login-email': email.upper(), 'login-password': 'correct horse battery7', 'login-remember': 'y', 'next': '//evil.example'})
         self.assertEqual(response.location, '/')
         with self.client.session_transaction() as session:
             self.assertTrue(session.permanent)
@@ -71,6 +71,14 @@ class AuthTests(unittest.TestCase):
         response = self.signup()
         self.assertEqual(response.status_code, 409)
         self.assertIn(b'already exists', response.data)
+
+    def test_password_requires_letter_and_number(self):
+        for password in ['lettersonly', '123456789', '!!!!!!!!', 'letters!only']:
+            with self.subTest(password=password):
+                response = self.signup(**{'signup-password': password, 'signup-confirm_password': password})
+                self.assertEqual(response.status_code, 400)
+                self.assertIn(b'at least one letter and one number', response.data)
+        self.assertEqual(self.signup(**{'signup-password': 'letters7', 'signup-confirm_password': 'letters7'}).status_code, 302)
 
     def test_safe_redirect_and_database_role(self):
         response = self.signup(next='/game?difficulty=hard', role='admin')
