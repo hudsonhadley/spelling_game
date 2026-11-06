@@ -41,7 +41,7 @@
     </aside>
     <noscript><p class="alert alert-warning">Enable JavaScript to load stats and preview admin tools.</p></noscript>
   </main>
-  <script src="../static/js/spelling.js"></script>
+  <script type="module" src="{{ url_for('static', filename='dist/game.js') }}"></script>
   <script>
     function refresh() {
       const stats = Spelling.stats();
